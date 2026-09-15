@@ -1414,11 +1414,14 @@ function analyze(text){
   const lower = text.toLowerCase();
   const tags = [];
   let category = 'Tarefa';
-  const isMeeting = /reuni[ãa]o|encontro|call\b/.test(lower);
+  const isMeeting = /reuni[ãa]o|encontro/.test(lower);
+  const isCall = /\bliga(r|ção|çao|ções|çoes|ndo|)\b|\btelefon(ar|e|ou|ando)?\b/.test(lower);
   const isUrgent = /urgente|prioridade alta|o quanto antes|agora mesmo/.test(lower);
   const isIdea = /\bideia\b|\bidéia\b/.test(lower);
 
   if(isMeeting){ category='Reunião'; tags.push('Reunião'); }
+  if(isCall && category==='Tarefa'){ category='Ligação'; }
+  if(isCall) tags.push('Ligação');
   if(isUrgent) tags.push('Urgente');
   if(isIdea){ category='Ideia'; tags.push('Ideia'); }
   if(/https?:\/\/|www\./i.test(text)) tags.push('Link');
@@ -1477,7 +1480,7 @@ function analyze(text){
     if(!seen.has(key) && t.length>0){ seen.add(key); finalTags.push(t); }
   });
 
-  return { tags: finalTags.slice(0,6), category, isMeeting, isUrgent, isIdea, person, client, system, project, date, time };
+  return { tags: finalTags.slice(0,6), category, isMeeting, isCall, isUrgent, isIdea, person, client, system, project, date, time };
 }
 
 // ============================================================
@@ -1796,7 +1799,8 @@ function getOrganizadoBuckets(filtered){
   return {
     'Urgentes': filtered.filter(m=>m.isUrgent),
     'Reuniões': filtered.filter(m=>m.isMeeting),
-    'Tarefas': filtered.filter(m=>!m.isMeeting && !m.isIdea),
+    'Ligações': filtered.filter(m=>m.isCall),
+    'Tarefas': filtered.filter(m=>!m.isMeeting && !m.isCall && !m.isIdea),
     'Ideias': filtered.filter(m=>m.isIdea),
     'Pessoas': filtered.filter(m=>m.person),
     'Clientes': filtered.filter(m=>m.client),
