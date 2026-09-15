@@ -534,8 +534,8 @@
     font-weight:600;
     padding:3px 9px;
     border-radius:20px;
-    background:rgba(40,121,184,0.16);
-    color:#78B4E8;
+    background:color-mix(in srgb, var(--blue-accent) 18%, transparent);
+    color:color-mix(in srgb, var(--blue-accent) 55%, white);
     white-space:nowrap;
   }
   .tag.urgent{background:rgba(200,92,92,0.18);color:#E79999;}
@@ -786,7 +786,7 @@
     text-decoration:none;color:var(--text-primary);
   }
   .attach-file{background:rgba(255,255,255,0.04);border:1px solid var(--border);}
-  .attach-link{background:rgba(40,121,184,0.10);border:1px solid rgba(40,121,184,0.28);}
+  .attach-link{background:color-mix(in srgb, var(--blue-accent) 10%, transparent);border:1px solid color-mix(in srgb, var(--blue-accent) 28%, transparent);}
   .attach-file .file-icon,.attach-link .link-icon{
     width:34px;height:34px;border-radius:8px;flex-shrink:0;
     display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;
@@ -2113,8 +2113,20 @@ function wireCloudSection(){
   if(signupBtn) signupBtn.onclick = ()=> doAuth(cloudSignUp);
 }
 
+function darkenHex(hex, factor){
+  // factor < 1 darkens, e.g. 0.72 = 72% brightness
+  const h = hex.replace('#','');
+  const r = Math.round(parseInt(h.substring(0,2),16) * factor);
+  const g = Math.round(parseInt(h.substring(2,4),16) * factor);
+  const b = Math.round(parseInt(h.substring(4,6),16) * factor);
+  const toHex = (n)=> Math.max(0,Math.min(255,n)).toString(16).padStart(2,'0');
+  return '#' + toHex(r) + toHex(g) + toHex(b);
+}
+
 function applySettings(){
-  document.documentElement.style.setProperty('--blue-accent', settings.accent || '#2879B8');
+  const accent = settings.accent || '#2879B8';
+  document.documentElement.style.setProperty('--blue-accent', accent);
+  document.documentElement.style.setProperty('--blue-primary', darkenHex(accent, 0.72));
   if(settings.theme === 'light'){
     document.documentElement.style.setProperty('--bg-main', '#F4F7FA');
     document.documentElement.style.setProperty('--bg-secondary', '#EAF0F5');
