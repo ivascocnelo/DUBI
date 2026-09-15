@@ -1565,6 +1565,12 @@ function fmtTime(ts){
   const d = new Date(ts);
   return d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'});
 }
+function fmtShortDateTime(ts){
+  const d = new Date(ts);
+  const dd = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  return `${dd}/${mm} · ${fmtTime(ts)}`;
+}
 function fmtDay(ts){
   const d = new Date(ts);
   const today = new Date();
@@ -1678,7 +1684,7 @@ function msgCard(m){
 
   if(editingMessageId === m.id){
     card.innerHTML = `
-      <div class="msg-meta"><span>${m.category}</span><span class="time">${fmtTime(m.ts)}</span></div>
+      <div class="msg-meta"><span>${m.category}</span><span class="time">${fmtShortDateTime(m.ts)}</span></div>
       <textarea class="edit-textarea">${escapeHtml(m.text)}</textarea>
       <div class="edit-actions">
         <button class="edit-cancel" type="button">Cancelar</button>
@@ -1738,7 +1744,7 @@ function msgCard(m){
       <span class="msg-meta-right">
         <button class="icon-btn edit-btn" type="button" title="Editar">✎</button>
         <button class="icon-btn delete-btn" type="button" title="Apagar">🗑</button>
-        <span class="time">${fmtTime(m.ts)}</span>
+        <span class="time">${fmtShortDateTime(m.ts)}</span>
       </span>
     </div>
     ${attachHtml}
@@ -1907,6 +1913,7 @@ function renderReunioes(el){
         <span class="msg-meta-right">
           <button class="icon-btn edit-btn" type="button" title="Editar">✎</button>
           <button class="icon-btn delete-btn" type="button" title="Apagar">🗑</button>
+          <span class="time">${fmtShortDateTime(m.ts)}</span>
         </span>
       </div>
       <div class="meeting-row">${rows.join('')}</div>
