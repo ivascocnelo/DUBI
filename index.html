@@ -134,6 +134,126 @@
   .auth-btn.secondary{background:var(--card-hover);color:var(--text-primary);}
   #auth-loading{color:var(--text-secondary);font-size:13.5px;padding:10px 0;}
 
+  /* ===== ONBOARDING (dog mascot walkthrough) ===== */
+  #onboarding-gate{
+    position:fixed;
+    inset:0;
+    background:var(--bg-main);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:600;
+    padding:24px;
+  }
+  #onboarding-gate.hidden{display:none;}
+  #onboarding-skip{
+    position:absolute;
+    top:22px;
+    right:24px;
+    background:none;
+    border:none;
+    color:var(--text-secondary);
+    font-size:13.5px;
+    font-weight:600;
+    cursor:pointer;
+    padding:6px 10px;
+  }
+  #onboarding-skip:hover{color:var(--text-primary);}
+  .onb-card{
+    width:100%;
+    max-width:380px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    text-align:center;
+  }
+  .onb-dog{
+    width:132px;
+    height:132px;
+    margin-bottom:18px;
+    border-radius:32px;
+    overflow:hidden;
+    background:linear-gradient(135deg,var(--blue-accent),var(--blue-primary));
+    box-shadow:0 14px 34px rgba(0,0,0,0.35);
+    flex-shrink:0;
+  }
+  .onb-dog img{width:100%;height:100%;object-fit:contain;}
+  .onb-bubble{
+    position:relative;
+    background:var(--card);
+    border:1px solid var(--border);
+    border-radius:18px;
+    padding:20px 22px;
+    margin-bottom:22px;
+    min-height:108px;
+    display:flex;
+    flex-direction:column;
+    justify-content:center;
+  }
+  .onb-bubble::before{
+    content:'';
+    position:absolute;
+    top:-9px;
+    left:50%;
+    transform:translateX(-50%) rotate(45deg);
+    width:16px;height:16px;
+    background:var(--card);
+    border-left:1px solid var(--border);
+    border-top:1px solid var(--border);
+  }
+  .onb-title{
+    font-size:16px;
+    font-weight:700;
+    color:var(--text-primary);
+    margin-bottom:6px;
+  }
+  .onb-text{
+    font-size:13.5px;
+    line-height:1.55;
+    color:var(--text-secondary);
+  }
+  .onb-dots{
+    display:flex;
+    gap:7px;
+    margin-bottom:20px;
+  }
+  .onb-dots span{
+    width:7px;height:7px;border-radius:50%;
+    background:rgba(255,255,255,0.15);
+    transition:background .15s ease, width .15s ease;
+  }
+  .onb-dots span.active{
+    background:var(--blue-accent);
+    width:20px;
+    border-radius:5px;
+  }
+  .onb-next{
+    width:100%;
+    padding:13px;
+    border-radius:12px;
+    border:none;
+    background:var(--blue-primary);
+    color:#fff;
+    font-size:14.5px;
+    font-weight:700;
+    cursor:pointer;
+  }
+  .onb-next:hover{background:var(--blue-accent);}
+
+  .howto-btn{
+    background:none;
+    border:1px solid var(--border);
+    color:var(--text-secondary);
+    font-size:12.5px;
+    font-weight:600;
+    padding:8px 10px;
+    border-radius:9px;
+    cursor:pointer;
+    margin:2px 0 10px 0;
+    text-align:left;
+  }
+  .howto-btn:hover{background:var(--card);color:var(--text-primary);}
+
   /* ===== SIDEBAR (desktop) ===== */
   .sidebar{
     width:250px;
@@ -785,6 +905,8 @@
   @media (max-width:420px){
     .auth-card{max-width:100%;}
     .modal-box{width:100%;}
+    .onb-dog{width:104px;height:104px;}
+    .onb-card{max-width:100%;}
   }
 </style>
 </head>
@@ -806,6 +928,19 @@
   </div>
 </div>
 
+<div id="onboarding-gate" class="hidden">
+  <button id="onboarding-skip" type="button">Pular</button>
+  <div class="onb-card">
+    <div class="onb-dog"></div>
+    <div class="onb-bubble">
+      <div class="onb-title" id="onb-title"></div>
+      <div class="onb-text" id="onb-text"></div>
+    </div>
+    <div class="onb-dots" id="onb-dots"></div>
+    <button class="onb-next" id="onb-next" type="button">Próximo</button>
+  </div>
+</div>
+
 <div id="app">
   <aside class="sidebar">
     <div class="brand">
@@ -816,6 +951,7 @@
       </div>
     </div>
     <nav class="nav" id="nav-desktop"></nav>
+    <button class="howto-btn" id="howto-btn" type="button">🐶 Como funciona</button>
     <div class="sidebar-footer">
       <span>💡</span>
       <span>Escreva normalmente. O Dubi organiza por trás.</span>
@@ -1732,10 +1868,16 @@ function renderConfig(el){
         <button class="toggle ${settings.privacy?'on':''}" id="toggle-privacy"></button>
       </div>
     </div>
+    <div class="settings-block" style="max-width:520px;">
+      <h4>🐶 Como o Dubi funciona</h4>
+      <div class="desc">Reveja a apresentação rapidinha do Dubi.</div>
+      <button id="replay-onboarding-btn" type="button" style="background:var(--card-hover);color:var(--text-primary);border:none;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;">Rever apresentação</button>
+    </div>
     <div class="settings-block" id="cloud-block" style="max-width:520px;">
       ${renderCloudSection()}
     </div>
   `;
+  document.getElementById('replay-onboarding-btn').onclick = ()=> showOnboarding();
   document.getElementById('toggle-theme').onclick = ()=>{
     settings.theme = settings.theme==='dark' ? 'light' : 'dark';
     applySettings(); saveSettings(); render();
@@ -2103,6 +2245,73 @@ function setAuthLoading(isLoading){
   document.getElementById('auth-loading').style.display = isLoading ? 'block' : 'none';
 }
 
+// ============================================================
+// ONBOARDING (cute dog-mascot walkthrough)
+// ============================================================
+const ONBOARDING_SLIDES = [
+  {
+    title: 'Oi, eu sou o Dubi! 🐶',
+    text: 'Sou uma agenda inteligente em formato de conversa. Você escreve, eu organizo tudo por trás.',
+  },
+  {
+    title: 'Escreva do seu jeito',
+    text: 'Pode escrever igual manda mensagem pra você mesmo: "Ligar pro João amanhã sobre o projeto X". Nada de formulário chato!',
+  },
+  {
+    title: 'Eu identifico tudo sozinho',
+    text: 'Tarefa, pessoa, cliente, data, prioridade... eu leio sua mensagem e organizo, sem nunca mudar o que você escreveu.',
+  },
+  {
+    title: 'Tudo em pastinhas fáceis de achar',
+    text: 'Reuniões, Tarefas, Pessoas & clientes... é só clicar numa pastinha pra ver tudo que tem dentro dela.',
+  },
+  {
+    title: 'Pronto! Bora começar? 🎉',
+    text: 'Escreve a primeira coisa que vier na cabeça, ali embaixo. Eu cuido do resto.',
+  },
+];
+const ONBOARDING_SEEN_KEY = 'dubi:onboarding-seen';
+let onbIndex = 0;
+
+function renderOnboardingSlide(){
+  const s = ONBOARDING_SLIDES[onbIndex];
+  document.getElementById('onb-title').textContent = s.title;
+  document.getElementById('onb-text').textContent = s.text;
+  document.getElementById('onb-next').textContent = onbIndex === ONBOARDING_SLIDES.length - 1 ? 'Vamos lá!' : 'Próximo';
+  const dots = document.getElementById('onb-dots');
+  dots.innerHTML = ONBOARDING_SLIDES.map((_, i)=>`<span class="${i===onbIndex?'active':''}"></span>`).join('');
+}
+
+function showOnboarding(){
+  onbIndex = 0;
+  const dogSrc = document.querySelector('.auth-logo img') || document.querySelector('.brand-mark img');
+  if(dogSrc) document.querySelector('.onb-dog').innerHTML = dogSrc.outerHTML;
+  renderOnboardingSlide();
+  document.getElementById('onboarding-gate').classList.remove('hidden');
+}
+function hideOnboarding(){
+  document.getElementById('onboarding-gate').classList.add('hidden');
+}
+function maybeShowOnboarding(){
+  let seen = false;
+  try{ seen = localStorage.getItem(ONBOARDING_SEEN_KEY) === '1'; }catch(e){}
+  if(!seen) showOnboarding();
+}
+document.getElementById('onb-next').addEventListener('click', ()=>{
+  if(onbIndex < ONBOARDING_SLIDES.length - 1){
+    onbIndex++;
+    renderOnboardingSlide();
+  } else {
+    try{ localStorage.setItem(ONBOARDING_SEEN_KEY, '1'); }catch(e){}
+    hideOnboarding();
+  }
+});
+document.getElementById('onboarding-skip').addEventListener('click', ()=>{
+  try{ localStorage.setItem(ONBOARDING_SEEN_KEY, '1'); }catch(e){}
+  hideOnboarding();
+});
+document.getElementById('howto-btn').addEventListener('click', ()=> showOnboarding());
+
 async function boot(){
   // mirror the sidebar dog icon into the auth card without duplicating the base64 in HTML
   const brandImg = document.querySelector('.brand-mark img');
@@ -2117,6 +2326,7 @@ async function boot(){
     setAuthLoading(false);
     hideAuthGate();
     await loadData();
+    maybeShowOnboarding();
     return;
   }
 
@@ -2139,6 +2349,7 @@ async function boot(){
   if(supabaseUser){
     hideAuthGate();
     await loadData();
+    maybeShowOnboarding();
   } else {
     showAuthGate();
   }
@@ -2162,6 +2373,7 @@ document.getElementById('auth-signin-btn').addEventListener('click', async ()=>{
   } else {
     hideAuthGate();
     await loadData();
+    maybeShowOnboarding();
   }
 });
 
@@ -2180,6 +2392,7 @@ document.getElementById('auth-signup-btn').addEventListener('click', async ()=>{
   } else {
     hideAuthGate();
     await loadData();
+    maybeShowOnboarding();
   }
 });
 
