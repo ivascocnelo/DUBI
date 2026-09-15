@@ -133,6 +133,30 @@
   .auth-btn.primary:hover{background:var(--blue-accent);}
   .auth-btn.secondary{background:var(--card-hover);color:var(--text-primary);}
   #auth-loading{color:var(--text-secondary);font-size:13.5px;padding:10px 0;}
+  #forgot-password-link{
+    background:none;
+    border:none;
+    color:var(--blue-accent);
+    font-size:12.5px;
+    font-weight:600;
+    cursor:pointer;
+    padding:4px;
+    margin-top:2px;
+  }
+  #forgot-password-link:hover{text-decoration:underline;}
+
+  #reset-gate{
+    position:fixed;
+    inset:0;
+    background:var(--bg-main);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    z-index:550;
+    padding:20px;
+  }
+  #reset-gate.hidden{display:none;}
+  #reset-loading{color:var(--text-secondary);font-size:13.5px;padding:10px 0;}
 
   /* ===== ONBOARDING (dog mascot walkthrough) ===== */
   #onboarding-gate{
@@ -923,8 +947,23 @@
       <div id="auth-error"></div>
       <button id="auth-signin-btn" type="button" class="auth-btn primary">Entrar</button>
       <button id="auth-signup-btn" type="button" class="auth-btn secondary">Criar conta</button>
+      <button id="forgot-password-link" type="button">Esqueci minha senha</button>
     </div>
     <div id="auth-loading" style="display:none;">Carregando…</div>
+  </div>
+</div>
+
+<div id="reset-gate" class="hidden">
+  <div class="auth-card">
+    <div class="auth-logo"></div>
+    <h1>Nova senha</h1>
+    <p class="auth-tagline">Escolha uma nova senha pra sua conta</p>
+    <div id="reset-form">
+      <input type="password" id="reset-password" placeholder="Nova senha (mín. 6 caracteres)" autocomplete="new-password">
+      <div id="reset-error"></div>
+      <button id="reset-confirm-btn" type="button" class="auth-btn primary">Salvar nova senha</button>
+    </div>
+    <div id="reset-loading" style="display:none;">Salvando…</div>
   </div>
 </div>
 
@@ -1075,7 +1114,7 @@ function createSupabaseClient(){
     auth: {
       persistSession: true,     // keep the session in localStorage
       autoRefreshToken: true,   // silently renew it before it expires
-      detectSessionInUrl: false,
+      detectSessionInUrl: true, // required so password-reset links work
       storage: window.localStorage,
       storageKey: 'dubi-auth-session',
     }
@@ -1116,7 +1155,15 @@ async function cloudSignUp(email, password){
   if(error) return { error: error.message };
   supabaseUser = data.user || (data.session && data.session.user) || null;
   cloudStatus = supabaseUser ? 'signed-in' : 'signed-out';
-  if(supabaseUser){ await cloudPush(); } // seed the cloud with whatever is local right now
+  if(supabaseUser){
+    // seed the cloud with whatever is local right now, in one batch insert
+    if(messages.length){
+      const rows = messages.map(m=>({ id:m.id, user_id:supabaseUser.id, payload:m, ts:m.ts }));
+      try{ await supabaseClient.from('dubi_messages').insert(rows); }
+      catch(e){ console.error('Erro ao enviar mensagens locais pra nuvem', e); }
+    }
+    await cloudPushSettings();
+  }
   return { ok:true };
 }
 async function cloudSignIn(email, password){
@@ -1139,36 +1186,111 @@ async function cloudSignOut(){
   showAuthGate();
 }
 
+async function cloudSendPasswordReset(email){
+  if(!supabaseClient) return { error:'A nuvem ainda não conectou. Tenta de novo em alguns segundos.' };
+  try{
+    const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+      redirectTo: window.location.origin + window.location.pathname,
+    });
+    if(error) return { error: error.message };
+    return { ok:true };
+  }catch(e){
+    return { error: 'Não consegui enviar o e-mail. Tenta de novo.' };
+  }
+}
+async function cloudUpdatePassword(newPassword){
+  if(!supabaseClient) return { error:'A nuvem ainda não conectou.' };
+  try{
+    const { error } = await supabaseClient.auth.updateUser({ password: newPassword });
+    if(error) return { error: error.message };
+    return { ok:true };
+  }catch(e){
+    return { error: 'Não consegui trocar a senha. Tenta de novo.' };
+  }
+}
+
+// Pulls this account's data from the cloud. Messages/attachments live one
+// row per message in `dubi_messages` (so a single edit only touches one
+// row instead of re-uploading the whole history every time). Settings are
+// small and live in `app_data`.
 async function cloudPullAndApply(){
   if(!supabaseClient || !supabaseUser) return;
   try{
-    const { data, error } = await supabaseClient
-      .from('dubi_app_data')
+    const { data: rows, error } = await supabaseClient
+      .from('dubi_messages')
+      .select('id,payload,ts')
+      .eq('user_id', supabaseUser.id)
+      .order('ts', { ascending:true });
+    if(error) throw error;
+
+    if(rows && rows.length){
+      messages = rows.map(r=>r.payload);
+    } else {
+      // one-time migration from the old single-blob format, if any exists
+      const { data: oldRow } = await supabaseClient
+        .from('app_data')
+        .select('data')
+        .eq('user_id', supabaseUser.id)
+        .maybeSingle();
+      const oldMessages = (oldRow && oldRow.data && Array.isArray(oldRow.data.messages)) ? oldRow.data.messages : [];
+      if(oldMessages.length){
+        messages = oldMessages;
+        const insertRows = oldMessages.map(m=>({ id:m.id, user_id:supabaseUser.id, payload:m, ts:m.ts }));
+        try{ await supabaseClient.from('dubi_messages').insert(insertRows); }
+        catch(e){ console.error('Erro na migração de mensagens antigas', e); }
+      }
+    }
+
+    const { data: settingsRow } = await supabaseClient
+      .from('app_data')
       .select('data')
       .eq('user_id', supabaseUser.id)
       .maybeSingle();
-    if(error) throw error;
-    if(data && data.data){
-      if(Array.isArray(data.data.messages)) messages = data.data.messages;
-      if(data.data.settings) settings = { ...settings, ...data.data.settings };
-      applySettings();
+    if(settingsRow && settingsRow.data && settingsRow.data.settings){
+      settings = { ...settings, ...settingsRow.data.settings };
     }
+
+    applySettings();
     render();
   }catch(e){
     console.error('Erro ao buscar dados da nuvem', e);
   }
 }
 
-async function cloudPush(){
-  if(!supabaseClient || !supabaseUser) return;
+async function cloudPushSettings(){
+  if(cloudStatus!=='signed-in' || !supabaseClient || !supabaseUser) return;
   try{
-    await supabaseClient.from('dubi_app_data').upsert({
+    await supabaseClient.from('app_data').upsert({
       user_id: supabaseUser.id,
-      data: { messages, settings },
+      data: { settings },
       updated_at: new Date().toISOString(),
     });
   }catch(e){
-    console.error('Erro ao enviar dados pra nuvem', e);
+    console.error('Erro ao salvar configurações na nuvem', e);
+  }
+}
+async function cloudInsertMessage(m){
+  if(cloudStatus!=='signed-in' || !supabaseClient || !supabaseUser) return;
+  try{
+    await supabaseClient.from('dubi_messages').insert({ id:m.id, user_id:supabaseUser.id, payload:m, ts:m.ts });
+  }catch(e){
+    console.error('Erro ao salvar mensagem na nuvem', e);
+  }
+}
+async function cloudUpdateMessage(m){
+  if(cloudStatus!=='signed-in' || !supabaseClient || !supabaseUser) return;
+  try{
+    await supabaseClient.from('dubi_messages').update({ payload:m, ts:m.ts }).eq('id', m.id).eq('user_id', supabaseUser.id);
+  }catch(e){
+    console.error('Erro ao atualizar mensagem na nuvem', e);
+  }
+}
+async function cloudDeleteMessage(id){
+  if(cloudStatus!=='signed-in' || !supabaseClient || !supabaseUser) return;
+  try{
+    await supabaseClient.from('dubi_messages').delete().eq('id', id).eq('user_id', supabaseUser.id);
+  }catch(e){
+    console.error('Erro ao apagar mensagem na nuvem', e);
   }
 }
 
@@ -1265,11 +1387,10 @@ async function saveMessages(){
     return;
   }
   await persist(STORAGE_KEY, payload, 'messages');
-  if(cloudStatus==='signed-in') cloudPush();
 }
 async function saveSettings(){
   await persist(SETTINGS_KEY, JSON.stringify(settings), 'settings');
-  if(cloudStatus==='signed-in') cloudPush();
+  cloudPushSettings();
 }
 
 function seedData(){
@@ -1573,6 +1694,7 @@ function msgCard(m){
       }
       editingMessageId = null;
       saveMessages();
+      cloudUpdateMessage(m);
       render();
     };
     setTimeout(()=>{ ta.focus(); ta.style.height = ta.scrollHeight+'px'; }, 0);
@@ -1639,6 +1761,7 @@ function deleteMessage(id){
   messages = messages.filter(x=>x.id!==id);
   if(editingMessageId===id) editingMessageId = null;
   saveMessages();
+  cloudDeleteMessage(id);
   render();
 }
 
@@ -1665,6 +1788,7 @@ function cycleStatus(id){
   const idx = order.indexOf(m.status||'pendente');
   m.status = order[(idx+1)%order.length];
   saveMessages();
+  cloudUpdateMessage(m);
   render();
 }
 
@@ -1760,6 +1884,7 @@ function renderReunioes(el){
         }
         editingMessageId = null;
         saveMessages();
+        cloudUpdateMessage(m);
         render();
       };
       setTimeout(()=>{ ta.focus(); }, 0);
@@ -2132,6 +2257,7 @@ function sendMessage(){
   }
   messages.push(m);
   saveMessages();
+  cloudInsertMessage(m);
   ta.value='';
   ta.style.height='auto';
   pendingAttachment = null;
@@ -2248,6 +2374,58 @@ function setAuthLoading(isLoading){
   document.getElementById('auth-form').style.display = isLoading ? 'none' : 'block';
   document.getElementById('auth-loading').style.display = isLoading ? 'block' : 'none';
 }
+function showResetGate(){
+  document.getElementById('reset-gate').classList.remove('hidden');
+  document.getElementById('app').style.display = 'none';
+}
+function hideResetGate(){
+  document.getElementById('reset-gate').classList.add('hidden');
+}
+function setResetLoading(isLoading){
+  document.getElementById('reset-form').style.display = isLoading ? 'none' : 'block';
+  document.getElementById('reset-loading').style.display = isLoading ? 'block' : 'none';
+}
+
+document.getElementById('forgot-password-link').addEventListener('click', async ()=>{
+  const email = document.getElementById('auth-email').value.trim();
+  const errBox = document.getElementById('auth-error');
+  errBox.style.color = '';
+  if(!email){
+    errBox.textContent = 'Digite seu e-mail no campo acima primeiro, aí clique de novo.';
+    return;
+  }
+  errBox.textContent = 'Enviando...';
+  const result = await cloudSendPasswordReset(email);
+  if(result.error){
+    errBox.textContent = result.error;
+  } else {
+    errBox.style.color = '#7FD1B2';
+    errBox.textContent = 'Te mandamos um link por e-mail! Abre ele nesse mesmo aparelho pra trocar a senha.';
+  }
+});
+
+document.getElementById('reset-confirm-btn').addEventListener('click', async ()=>{
+  const pass = document.getElementById('reset-password').value;
+  const errBox = document.getElementById('reset-error');
+  errBox.textContent = '';
+  if(!pass || pass.length < 6){
+    errBox.textContent = 'A senha precisa ter pelo menos 6 caracteres.';
+    return;
+  }
+  setResetLoading(true);
+  const result = await cloudUpdatePassword(pass);
+  setResetLoading(false);
+  if(result.error){
+    errBox.textContent = result.error;
+  } else {
+    hideResetGate();
+    // the recovery session is already a valid session — go straight into the app
+    history.replaceState(null, '', window.location.pathname);
+    hideAuthGate();
+    await loadData();
+    maybeShowOnboarding();
+  }
+});
 
 // ============================================================
 // ONBOARDING (cute dog-mascot walkthrough)
@@ -2317,9 +2495,9 @@ document.getElementById('onboarding-skip').addEventListener('click', ()=>{
 document.getElementById('howto-btn').addEventListener('click', ()=> showOnboarding());
 
 async function boot(){
-  // mirror the sidebar dog icon into the auth card without duplicating the base64 in HTML
+  // mirror the sidebar dog icon into the login/reset cards without duplicating the base64 in HTML
   const brandImg = document.querySelector('.brand-mark img');
-  if(brandImg) document.querySelector('.auth-logo').innerHTML = brandImg.outerHTML;
+  if(brandImg) document.querySelectorAll('.auth-logo').forEach(el=> el.innerHTML = brandImg.outerHTML);
 
   loadCloudConfig();
   setAuthLoading(true);
@@ -2334,16 +2512,32 @@ async function boot(){
     return;
   }
 
+  const isRecoveryLink = window.location.hash.includes('type=recovery') || window.location.search.includes('type=recovery');
+
   try{
     supabaseClient = createSupabaseClient();
+    supabaseClient.auth.onAuthStateChange((event, session)=>{
+      supabaseUser = session ? session.user : null;
+      cloudStatus = supabaseUser ? 'signed-in' : 'signed-out';
+      if(event === 'PASSWORD_RECOVERY'){
+        setAuthLoading(false);
+        hideAuthGate();
+        showResetGate();
+        return;
+      }
+      if(currentView==='config') render();
+    });
+
+    if(isRecoveryLink){
+      // Don't race into the app — wait for the PASSWORD_RECOVERY event above.
+      showAuthGate();
+      setAuthLoading(true);
+      return;
+    }
+
     const { data:{ session } } = await supabaseClient.auth.getSession();
     supabaseUser = session ? session.user : null;
     cloudStatus = supabaseUser ? 'signed-in' : 'signed-out';
-    supabaseClient.auth.onAuthStateChange((_event, session)=>{
-      supabaseUser = session ? session.user : null;
-      cloudStatus = supabaseUser ? 'signed-in' : 'signed-out';
-      if(currentView==='config') render();
-    });
   }catch(e){
     console.error('Erro ao conectar ao Supabase', e);
   }
