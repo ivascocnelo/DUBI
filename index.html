@@ -933,6 +933,18 @@ function saveCloudConfig(){
   try{ localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cloudConfig)); }catch(e){ console.error(e); }
 }
 
+function createSupabaseClient(){
+  return supabase.createClient(cloudConfig.url, cloudConfig.anonKey, {
+    auth: {
+      persistSession: true,     // keep the session in localStorage
+      autoRefreshToken: true,   // silently renew it before it expires
+      detectSessionInUrl: false,
+      storage: window.localStorage,
+      storageKey: 'dubi-auth-session',
+    }
+  });
+}
+
 async function initCloud(){
   if(!cloudConfig.url || !cloudConfig.anonKey) { cloudStatus = 'off'; return; }
   if(typeof supabase === 'undefined'){
@@ -942,7 +954,7 @@ async function initCloud(){
   }
   try{
     cloudStatus = 'connecting';
-    supabaseClient = supabase.createClient(cloudConfig.url, cloudConfig.anonKey);
+    supabaseClient = createSupabaseClient();
     const { data:{ session } } = await supabaseClient.auth.getSession();
     supabaseUser = session ? session.user : null;
     cloudStatus = supabaseUser ? 'signed-in' : 'signed-out';
@@ -2109,7 +2121,7 @@ async function boot(){
   }
 
   try{
-    supabaseClient = supabase.createClient(cloudConfig.url, cloudConfig.anonKey);
+    supabaseClient = createSupabaseClient();
     const { data:{ session } } = await supabaseClient.auth.getSession();
     supabaseUser = session ? session.user : null;
     cloudStatus = supabaseUser ? 'signed-in' : 'signed-out';
